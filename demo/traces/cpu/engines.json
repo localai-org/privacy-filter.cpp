@@ -1,0 +1,16 @@
+[
+  {
+    "key": "ours",
+    "label": "privacy-filter.cpp",
+    "device": "CPU",
+    "tps": 2332,
+    "hero": true
+  },
+  {
+    "key": "hf",
+    "label": "HF Transformers",
+    "device": "CPU",
+    "tps": 304,
+    "hero": false
+  }
+]

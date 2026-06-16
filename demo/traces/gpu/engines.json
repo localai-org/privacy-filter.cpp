@@ -1,0 +1,17 @@
+[
+  {
+    "key": "ours",
+    "label": "privacy-filter.cpp",
+    "device": "GPU · Vulkan",
+    "tps": 81105,
+    "hero": true
+  },
+  {
+    "key": "hf",
+    "label": "HF Transformers",
+    "device": "GPU · CUDA",
+    "tps": 14154,
+    "hero": false,
+    "oom_at_tokens": 16384
+  }
+]

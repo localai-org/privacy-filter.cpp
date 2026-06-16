@@ -15,6 +15,59 @@ Convert your own from a HF checkpoint with
 [`scripts/convert.py`](scripts/convert.py) — self-contained, no llama.cpp
 dependency (see [Convert](#convert)).
 
+## Bench
+
+A "redaction race" against stock HF Transformers on the same hardware:
+
+**CPU — 8k-token document, real time.** Both finish; ours is 7.7× faster.
+
+![CPU redaction race: privacy-filter.cpp vs HF Transformers on an 8k-token document](demo/out/pii_duel_cpu.gif)
+
+**GPU — 132k-token document (4× slow-mo).** Ours runs flat to 131k tokens; HF
+hits the 16 GiB memory wall and OOMs at ~16k.
+
+![GPU redaction race: privacy-filter.cpp runs to 131k tokens while HF OOMs](demo/out/pii_duel_gpu.gif)
+
+Full-quality MP4s: [CPU](demo/out/pii_duel_cpu_final.mp4) · [GPU](demo/out/pii_duel_gpu_final.mp4).
+
+Single forward-pass latency and throughput vs stock HF Transformers (transformers
+5.9, eager), Ryzen 9 7900 (12 threads) + RTX 5070 Ti, f16/fp16, matched token
+counts ([scripts/bench_torch.py](scripts/bench_torch.py)). `tokens` is the input
+sequence length classified in one forward pass (the whole document at once, not
+generation); latency is `tokens ÷ tok/s`.
+
+GPU — ours (Vulkan) vs HF (CUDA):
+
+| tokens | HF (tok/s) | HF (ms) | ours (tok/s) | ours (ms) | speedup |
+|-------:|-----------:|--------:|-------------:|----------:|--------:|
+|    512 |      5 526 |      93 |      100 503 |         5 |     18× |
+|  2 048 |     16 427 |     125 |      145 481 |        14 |    8.9× |
+|  8 192 |     14 154 |     579 |      105 034 |        78 |    7.4× |
+| 32 768 |        OOM |     OOM |       83 519 |       392 |       — |
+| 131072 |        OOM |     OOM |       81 105 |     1 616 |       — |
+
+CPU — ours vs HF (fp32):
+
+| tokens | HF (tok/s) | HF (s) | ours (tok/s) | ours (s) | speedup |
+|-------:|-----------:|-------:|-------------:|---------:|--------:|
+|    512 |      2 171 |   0.24 |        3 564 |     0.14 |    1.6× |
+|  2 048 |        978 |   2.09 |        3 490 |     0.59 |    3.6× |
+|  8 192 |        304 |  26.95 |        2 332 |     3.51 |    7.7× |
+
+The speedup widens with length because HF's full self-attention is O(n²) while
+ours is banded/near-linear, so our tok/s stays roughly flat as HF's collapses.
+Memory is flat ~2.8 GiB VRAM on a 16
+GiB GPU. `release-portable` runtime-dispatches the best ggml-cpu ISA (AVX-512
+without `-march=native`); flash + banded attention default on. See
+[docs/cpu-perf.md](docs/cpu-perf.md).
+
+Reproduce the numbers:
+
+```sh
+cmake --preset release-portable && cmake --build --preset release-portable -j
+build/release-portable/bin/pf-bench model.gguf [cpu|vulkan] [iters] [lengths]
+```
+
 ## Build
 
 ```sh
@@ -126,37 +179,3 @@ cmake --preset fuzz && cmake --build --preset fuzz -j
 PF_GGUF=model.gguf ./build/fuzz/fuzz_tokenizer corpus_tok/
 ./build/fuzz/fuzz_gguf corpus_gguf/
 ```
-
-## Bench
-
-```sh
-cmake --preset release-portable && cmake --build --preset release-portable -j
-build/release-portable/bin/pf-bench model.gguf [cpu|vulkan] [iters] [lengths]
-```
-
-Forward tok/s vs stock HF Transformers (transformers 5.9, eager), Ryzen 9 7900 (12
-threads) + RTX 5070 Ti, f16/fp16, matched token counts
-([scripts/bench_torch.py](scripts/bench_torch.py)):
-
-GPU — ours (Vulkan) vs HF (CUDA):
-
-| tokens |      HF |    ours |    × |
-|-------:|--------:|--------:|-----:|
-|    512 |   5 526 | 100 503 |  18× |
-|  2 048 |  16 427 | 145 481 | 8.9× |
-|  8 192 |  14 154 | 105 034 | 7.4× |
-| 32 768 |     OOM |  83 519 |    — |
-| 131072 |     OOM |  81 105 |    — |
-
-CPU — ours vs HF (fp32):
-
-| tokens |    HF |  ours |    × |
-|-------:|------:|------:|-----:|
-|    512 | 2 171 | 3 564 | 1.6× |
-|  2 048 |   978 | 3 490 | 3.6× |
-|  8 192 |   304 | 2 332 | 7.7× |
-
-Memory is flat ~2.8 GiB VRAM / ~3 GiB RAM to 131k tokens; HF OOMs past ~16k on a 16
-GiB GPU. `release-portable` runtime-dispatches the best ggml-cpu ISA (AVX-512
-without `-march=native`); flash + banded attention default on. See
-[docs/cpu-perf.md](docs/cpu-perf.md).
