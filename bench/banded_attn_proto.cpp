@@ -9,7 +9,7 @@
 #include <ggml.h>
 #include <ggml-cpu.h>
 #include <ggml-backend.h>
-
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
