@@ -33,6 +33,15 @@ unsigned default_cpu_threads() {
     return logical;
 }
 
+// Both discrete and integrated GPUs are valid offload targets. ggml reports
+// iGPUs (e.g. AMD Radeon 780M / any uma:1 device) as a distinct device type,
+// so a plain "== GPU" check silently drops them and llama.cpp-capable hardware
+// looks unsupported.
+bool is_gpu_device(ggml_backend_dev_t dev) {
+    const enum ggml_backend_dev_type t = ggml_backend_dev_type(dev);
+    return t == GGML_BACKEND_DEVICE_TYPE_GPU || t == GGML_BACKEND_DEVICE_TYPE_IGPU;
+}
+
 // "cuda:1" -> ("cuda", 1); "vulkan" -> ("vulkan", 0); "" -> ("", 0).
 void parse_device(const std::string & req, std::string & name, int & index) {
     const size_t colon = req.find(':');
@@ -94,7 +103,7 @@ bool engine_backend::init(const std::string & device_req, int n_threads) {
         int gpu_idx = 0;
         for (size_t i = 0; i < ggml_backend_dev_count(); i++) {
             ggml_backend_dev_t dev = ggml_backend_dev_get(i);
-            if (ggml_backend_dev_type(dev) != GGML_BACKEND_DEVICE_TYPE_GPU) continue;
+            if (!is_gpu_device(dev)) continue;
             if (!want_reg.empty()) {
                 const char * reg = ggml_backend_reg_name(ggml_backend_dev_backend_reg(dev));
                 if (!reg || lower(reg) != want_reg) continue;
