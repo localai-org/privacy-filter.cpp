@@ -9,6 +9,7 @@
 #include <cstring>
 #include <fstream>
 #include <thread>
+#include <vector>
 
 namespace pf {
 
@@ -42,11 +43,14 @@ bool is_gpu_device(ggml_backend_dev_t dev) {
     return t == GGML_BACKEND_DEVICE_TYPE_GPU || t == GGML_BACKEND_DEVICE_TYPE_IGPU;
 }
 
-// "cuda:1" -> ("cuda", 1); "vulkan" -> ("vulkan", 0); "" -> ("", 0).
-void parse_device(const std::string & req, std::string & name, int & index) {
+// "cuda:1" -> ("cuda", 1, true); "vulkan" -> ("vulkan", 0, false); "" -> ("", 0, false).
+// `explicit_index` distinguishes a bare "vulkan" (auto-pick best) from "vulkan:0"
+// (literal device index) -- they'd otherwise both yield index 0.
+void parse_device(const std::string & req, std::string & name, int & index, bool & explicit_index) {
     const size_t colon = req.find(':');
     name  = lower(colon == std::string::npos ? req : req.substr(0, colon));
-    index = (colon != std::string::npos) ? std::atoi(req.c_str() + colon + 1) : 0;
+    explicit_index = (colon != std::string::npos);
+    index = explicit_index ? std::atoi(req.c_str() + colon + 1) : 0;
 }
 
 } // namespace
@@ -77,7 +81,8 @@ bool engine_backend::init(const std::string & device_req, int n_threads) {
 
     std::string name;
     int         want_idx = 0;
-    parse_device(device_req, name, want_idx);
+    bool        explicit_idx = false;
+    parse_device(device_req, name, want_idx, explicit_idx);
 
     if (name.empty() || name == "cpu") {
         be = ggml_backend_init_by_type(GGML_BACKEND_DEVICE_TYPE_CPU, nullptr);
@@ -95,12 +100,12 @@ bool engine_backend::init(const std::string & device_req, int n_threads) {
         }
         set_cpu_threads(be, n_threads);
     } else if (name == "gpu" || name == "cuda" || name == "vulkan") {
-        // "gpu" picks the first GPU of whichever backend was compiled in;
+        // "gpu" picks the best GPU of whichever backend was compiled in;
         // "cuda"/"vulkan" pin a specific backend when more than one is built.
-        // ":N" selects the Nth matching GPU — multi-GPU hosts often enumerate
-        // an integrated GPU first.
         const std::string want_reg = (name == "gpu") ? "" : name;
-        int gpu_idx = 0;
+
+        // Gather matching GPU/iGPU devices in ggml enumeration order.
+        std::vector<ggml_backend_dev_t> matches;
         for (size_t i = 0; i < ggml_backend_dev_count(); i++) {
             ggml_backend_dev_t dev = ggml_backend_dev_get(i);
             if (!is_gpu_device(dev)) continue;
@@ -108,10 +113,34 @@ bool engine_backend::init(const std::string & device_req, int n_threads) {
                 const char * reg = ggml_backend_reg_name(ggml_backend_dev_backend_reg(dev));
                 if (!reg || lower(reg) != want_reg) continue;
             }
-            if (gpu_idx++ != want_idx) continue;
-            be = ggml_backend_dev_init(dev, nullptr);
+            matches.push_back(dev);
+        }
+
+        // Try candidates in priority order until one initializes.
+        //   "vulkan:N" -> the literal Nth match (user pinned it).
+        //   bare "vulkan"/"gpu" -> prefer a *discrete* GPU, fall back to an
+        //   integrated one. ggml keeps devices in driver-enumeration order,
+        //   which frequently lists the iGPU first (e.g. RADV on an AMD APU +
+        //   dGPU box), so taking index 0 would hand a fast dGPU host its slow
+        //   iGPU. iGPU-only machines still resolve via the fallback.
+        std::vector<ggml_backend_dev_t> candidates;
+        if (explicit_idx) {
+            if (want_idx >= 0 && want_idx < (int) matches.size()) {
+                candidates.push_back(matches[want_idx]);
+            }
+        } else {
+            for (ggml_backend_dev_t d : matches) {
+                if (ggml_backend_dev_type(d) == GGML_BACKEND_DEVICE_TYPE_GPU) candidates.push_back(d);
+            }
+            for (ggml_backend_dev_t d : matches) {
+                if (ggml_backend_dev_type(d) == GGML_BACKEND_DEVICE_TYPE_IGPU) candidates.push_back(d);
+            }
+        }
+
+        for (ggml_backend_dev_t d : candidates) {
+            be = ggml_backend_dev_init(d, nullptr);
             if (be) {
-                device = ggml_backend_dev_name(dev);
+                device = ggml_backend_dev_name(d);
                 break;
             }
         }
