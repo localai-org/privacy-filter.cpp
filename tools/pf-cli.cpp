@@ -7,6 +7,7 @@
 #include "model.h"
 #include "ner.h"
 #include "tokenizer.h"
+#include "json.h"
 
 #include <cstdio>
 #include <cstring>
@@ -147,10 +148,12 @@ int main(int argc, char ** argv) {
         }
         std::printf("[");
         for (size_t i = 0; i < n_ents; i++) {
-            std::printf("%s\n {\"entity_group\": \"%s\", \"start\": %d, \"end\": %d, "
-                        "\"score\": %.4f, \"text\": \"%.*s\"}",
-                        i ? "," : "", ents[i].label, ents[i].start, ents[i].end,
-                        ents[i].score, ents[i].end - ents[i].start, text.data() + ents[i].start);
+            std::printf("%s\n {\"entity_group\": %s, \"start\": %d, \"end\": %d, "
+                        "\"score\": %.4f, \"text\": %s}",
+                        i ? "," : "", pf::cli::json_quote(ents[i].label).c_str(),
+                        ents[i].start, ents[i].end, ents[i].score,
+                        pf::cli::json_quote(std::string_view(text.data() + ents[i].start,
+                            ents[i].end - ents[i].start)).c_str());
         }
         std::printf("\n]\n");
         pf_entities_free(ents, n_ents);
@@ -250,10 +253,12 @@ int main(int argc, char ** argv) {
             while (bstart < bend && (unsigned char) text[bstart] <= ' ') bstart++;
             while (bend > bstart && (unsigned char) text[bend - 1] <= ' ') bend--;
             if (bstart >= bend) continue;
-            std::printf("%s\n {\"entity_group\": \"%s\", \"start\": %d, \"end\": %d, "
-                        "\"score\": %.4f, \"text\": \"%.*s\"}",
-                        first ? "" : ",", lt.category_name(sp.cat).c_str(), bstart, bend,
-                        sp.score, bend - bstart, text.data() + bstart);
+            std::printf("%s\n {\"entity_group\": %s, \"start\": %d, \"end\": %d, "
+                        "\"score\": %.4f, \"text\": %s}",
+                        first ? "" : ",", pf::cli::json_quote(lt.category_name(sp.cat)).c_str(),
+                        bstart, bend, sp.score,
+                        pf::cli::json_quote(std::string_view(text.data() + bstart,
+                            bend - bstart)).c_str());
             first = false;
         }
         std::printf("\n]\n");

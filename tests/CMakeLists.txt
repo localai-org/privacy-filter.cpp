@@ -14,6 +14,11 @@ pf_add_test(test_graph_blocks)
 pf_add_test(test_ner)
 pf_add_test(test_tokenizer)
 
+# CLI serialization needs neither model weights nor ggml.
+add_executable(test_json test_json.cpp)
+target_compile_options(test_json PRIVATE -Wall -Wextra)
+add_test(NAME test_json COMMAND test_json)
+
 pf_add_test(test_parity)
 pf_add_test(test_window_stitch)
 set_tests_properties(test_parity test_window_stitch test_tokenizer
