@@ -1,5 +1,9 @@
 # privacy-filter.cpp
 
+**Brought to you by the [LocalAI](https://github.com/mudler/LocalAI) team**, the folks behind LocalAI, the open-source AI engine that runs any model (LLMs, vision, voice, image, video) on any hardware, no GPU required.
+
+[![LocalAI](https://img.shields.io/badge/LocalAI-Run_Locally-orange)](https://github.com/mudler/LocalAI)
+
 Minimal [GGML](https://github.com/ggml-org/ggml) inference engine for the
 `openai-privacy-filter` token-classification model family
 ([openai/privacy-filter](https://huggingface.co/openai/privacy-filter),
